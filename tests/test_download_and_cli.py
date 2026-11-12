@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from engine_health_flow import data
@@ -44,3 +46,29 @@ def test_info_prints_counts(toy_csv, capsys):
     assert "3 sequences, 16 rows" in out
     assert "length 4 to 7" in out
     assert "3 maintenance events" in out
+
+
+def test_baselines_writes_the_metrics_file(synthetic_csv, tmp_path, capsys):
+    out = tmp_path / "results" / "fold1.json"
+    main(
+        [
+            "baselines",
+            "--csv",
+            str(synthetic_csv),
+            "--fold",
+            "1",
+            "--models",
+            "ridge",
+            "--out",
+            str(out),
+        ]
+    )
+    saved = json.loads(out.read_text())
+    assert saved["fold"] == 1
+    assert list(saved["models"]) == ["ridge"]
+    assert "ridge" in capsys.readouterr().out
+
+
+def test_baselines_refuses_an_unknown_model(synthetic_csv):
+    with pytest.raises(SystemExit):
+        main(["baselines", "--csv", str(synthetic_csv), "--models", "ridge,svm"])

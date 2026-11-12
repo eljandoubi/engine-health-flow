@@ -57,3 +57,22 @@ def make_synthetic(n_seq=8, length=120, noise=3e-4, seed=0) -> Dataset:
 @pytest.fixture
 def synthetic():
     return make_synthetic
+
+
+@pytest.fixture
+def synthetic_csv(tmp_path):
+    """The synthetic data written in the layout of the benchmark csv."""
+    ds = make_synthetic(n_seq=10, length=80)
+    frame = pd.concat(
+        [
+            pd.DataFrame(ds.health, columns=HEALTH),
+            pd.DataFrame(ds.sensors, columns=SENSOR_COLUMNS),
+        ],
+        axis=1,
+    )
+    frame["sequence_id"] = np.repeat(ds.ids, ds.lengths)
+    frame["timestep"] = np.concatenate([np.arange(n) for n in ds.lengths])
+    frame["maintenance"] = ds.maintenance
+    path = tmp_path / "synthetic.csv"
+    frame.to_csv(path, index=False)
+    return path
