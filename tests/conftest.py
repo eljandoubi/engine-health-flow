@@ -3,6 +3,8 @@ import pandas as pd
 import pytest
 
 from engine_health_flow.data import HEALTH, SENSOR_COLUMNS, Dataset
+from engine_health_flow.scaling import Prepared
+from engine_health_flow.ukf import fit_ukf
 
 
 def toy_frame(lengths=(5, 7, 4), shuffle=True) -> pd.DataFrame:
@@ -62,6 +64,25 @@ def make_synthetic(n_seq=8, length=120, noise=3e-4, seed=0, jump_every=0) -> Dat
 @pytest.fixture
 def synthetic():
     return make_synthetic
+
+
+@pytest.fixture
+def fitted_ukf():
+    """A small filter fitted on synthetic engines with maintenance jumps: (model, train, test)."""
+    ds = make_synthetic(n_seq=10, length=120, jump_every=40)
+    train, val, test = ds.take(range(6)), ds.take([6, 7]), ds.take([8, 9])
+    model = fit_ukf(
+        Prepared.fit(train),
+        train,
+        val,
+        q_scales=(1.0,),
+        r_scales=(1.0,),
+        steps=300,
+        batch=256,
+        hidden=32,
+        depth=2,
+    )
+    return model, train, test
 
 
 @pytest.fixture

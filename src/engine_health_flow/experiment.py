@@ -11,18 +11,24 @@ import torch
 from engine_health_flow.baselines import fit_boosting, fit_ridge
 from engine_health_flow.data import Dataset
 from engine_health_flow.flow import fit_flow
-from engine_health_flow.metrics import point_metrics, posterior_metrics
+from engine_health_flow.hybrid import fit_hybrid
+from engine_health_flow.metrics import (
+    point_metrics,
+    posterior_metrics,
+    rescale_spread,
+    spread_scales,
+)
 from engine_health_flow.neural import fit_gru, fit_mlp
 from engine_health_flow.scaling import Prepared
 from engine_health_flow.splits import make_folds
 from engine_health_flow.ukf import fit_ukf
 from engine_health_flow.windows import EVAL_STRIDE, WINDOW, window_rows
 
-MODELS = ("ridge", "boosting", "mlp", "gru", "ukf", "flow")
+MODELS = ("ridge", "boosting", "mlp", "gru", "ukf", "flow", "hybrid")
 
 
 def fit_model(name: str, prep: Prepared, train: Dataset, val: Dataset, seed: int, **options):
-    """Only the ukf looks at val: it picks its two noise scales there."""
+    """Only the ukf and the hybrid look at val: the ukf picks its two noise scales there."""
     if name == "ridge":
         return fit_ridge(prep, train, **options)
     if name == "boosting":
@@ -35,6 +41,8 @@ def fit_model(name: str, prep: Prepared, train: Dataset, val: Dataset, seed: int
         return fit_ukf(prep, train, val, seed=seed, **options)
     if name == "flow":
         return fit_flow(prep, train, seed=seed, **options)
+    if name == "hybrid":
+        return fit_hybrid(prep, train, val, seed=seed, **options)
     raise ValueError(f"unknown model {name!r}, pick from {MODELS}")
 
 
@@ -57,6 +65,30 @@ def environment() -> dict:
         "numpy": np.__version__,
         "machine": platform.platform(),
     }
+
+
+def score_model(model, scored: dict) -> dict:
+    """Metrics of a fitted model on each part of scored, the first part being validation.
+
+    A model with a posterior is scored on its draws too, and again with the spread of the draws
+    rescaled by factors fitted on validation. Those rescaled numbers are only held out on test.
+    """
+    result, scales = {}, None
+    for part, (d, rows) in scored.items():
+        truth = d.health[rows]
+        if not hasattr(model, "posterior"):
+            result[part] = point_metrics(truth, model.predict(d, rows))
+            continue
+        point, draws = model.posterior(d, rows)
+        if scales is None:
+            scales = spread_scales(truth, point, draws)
+        result[part] = point_metrics(truth, point)
+        result[part]["posterior"] = posterior_metrics(truth, draws)
+        rescaled = rescale_spread(point, draws, scales)
+        result[part]["posterior_rescaled"] = posterior_metrics(truth, rescaled)
+    if scales is not None:
+        result["spread_scales"] = scales.tolist()
+    return result
 
 
 def run_fold(
@@ -86,14 +118,7 @@ def run_fold(
         start = time.time()
         model = fit_model(name, prep, train, val, seed, **options.get(name, {}))
         models[name] = {"fit_seconds": round(time.time() - start, 1)}
-        for part, (d, rows) in scored.items():
-            truth = d.health[rows]
-            if hasattr(model, "posterior"):
-                point, draws = model.posterior(d, rows)
-                models[name][part] = point_metrics(truth, point)
-                models[name][part]["posterior"] = posterior_metrics(truth, draws)
-            else:
-                models[name][part] = point_metrics(truth, model.predict(d, rows))
+        models[name].update(score_model(model, scored))
         print(f"{name}: done after {time.time() - start:.0f}s", flush=True)
 
     return {

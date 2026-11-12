@@ -3,7 +3,7 @@ import torch
 
 from engine_health_flow.metrics import rmse
 from engine_health_flow.scaling import Prepared
-from engine_health_flow.ukf import Dynamics, estimate_dynamics, fit_ukf, ukf
+from engine_health_flow.ukf import Dynamics, estimate_dynamics, ukf
 from engine_health_flow.windows import window_rows
 
 
@@ -97,25 +97,8 @@ def test_dynamics_come_from_steps_inside_sequences(synthetic):
     assert dyn.jump.min() > 5 * dyn.drift.abs().max()
 
 
-def fitted_ukf(synthetic):
-    ds = synthetic(n_seq=10, length=120, jump_every=40)
-    train, val, test = ds.take(range(6)), ds.take([6, 7]), ds.take([8, 9])
-    model = fit_ukf(
-        Prepared.fit(train),
-        train,
-        val,
-        q_scales=(1.0,),
-        r_scales=(1.0,),
-        steps=300,
-        batch=256,
-        hidden=32,
-        depth=2,
-    )
-    return model, train, test
-
-
-def test_ukf_tracks_synthetic_engines_better_than_the_mean(synthetic):
-    model, train, test = fitted_ukf(synthetic)
+def test_ukf_tracks_synthetic_engines_better_than_the_mean(fitted_ukf):
+    model, train, test = fitted_ukf
     rows = window_rows(test)
     mean, std = model.filtered(test)
     assert mean.shape == std.shape == test.health.shape
@@ -126,8 +109,8 @@ def test_ukf_tracks_synthetic_engines_better_than_the_mean(synthetic):
     assert err < 0.5 * baseline.mean()
 
 
-def test_ukf_posterior_draws_follow_the_filtered_gaussian(synthetic):
-    model, _, test = fitted_ukf(synthetic)
+def test_ukf_posterior_draws_follow_the_filtered_gaussian(fitted_ukf):
+    model, _, test = fitted_ukf
     rows = window_rows(test)[:30]
     mean, draws = model.posterior(test, rows, n=4000)
     want_mean, want_std = model.filtered(test)
