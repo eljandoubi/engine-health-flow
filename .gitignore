@@ -1,0 +1,12 @@
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+
+# downloaded data and local run output (results/ is tracked)
+data/
+runs/
