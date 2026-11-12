@@ -6,6 +6,7 @@ import torch
 from engine_health_flow.data import Dataset
 
 WINDOW = 50
+EVAL_STRIDE = 5  # models are scored on one window out of five, the rest are near copies
 
 
 def window_rows(ds: Dataset, window: int = WINDOW, stride: int = 1) -> np.ndarray:

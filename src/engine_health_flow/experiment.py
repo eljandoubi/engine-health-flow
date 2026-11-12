@@ -14,13 +14,14 @@ from engine_health_flow.metrics import point_metrics
 from engine_health_flow.neural import fit_gru, fit_mlp
 from engine_health_flow.scaling import Prepared
 from engine_health_flow.splits import make_folds
-from engine_health_flow.windows import WINDOW, window_rows
+from engine_health_flow.ukf import fit_ukf
+from engine_health_flow.windows import EVAL_STRIDE, WINDOW, window_rows
 
-MODELS = ("ridge", "boosting", "mlp", "gru")
-EVAL_STRIDE = 5
+MODELS = ("ridge", "boosting", "mlp", "gru", "ukf")
 
 
-def fit_model(name: str, prep: Prepared, train: Dataset, seed: int, **options):
+def fit_model(name: str, prep: Prepared, train: Dataset, val: Dataset, seed: int, **options):
+    """Only the ukf looks at val: it picks its two noise scales there."""
     if name == "ridge":
         return fit_ridge(prep, train, **options)
     if name == "boosting":
@@ -29,6 +30,8 @@ def fit_model(name: str, prep: Prepared, train: Dataset, seed: int, **options):
         return fit_mlp(prep, train, seed=seed, **options)
     if name == "gru":
         return fit_gru(prep, train, seed=seed, **options)
+    if name == "ukf":
+        return fit_ukf(prep, train, val, seed=seed, **options)
     raise ValueError(f"unknown model {name!r}, pick from {MODELS}")
 
 
@@ -77,7 +80,7 @@ def run_baselines(
     models = {}
     for name in names:
         start = time.time()
-        model = fit_model(name, prep, train, seed, **options.get(name, {}))
+        model = fit_model(name, prep, train, val, seed, **options.get(name, {}))
         models[name] = {"fit_seconds": round(time.time() - start, 1)}
         for part, (d, rows) in scored.items():
             models[name][part] = point_metrics(d.health[rows], model.predict(d, rows))
