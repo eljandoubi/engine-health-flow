@@ -4,7 +4,7 @@ from functools import partial
 
 import numpy as np
 
-SPREAD_GRID = 2.0 ** np.linspace(-2, 1, 13)  # 0.25 to 2, with 1 in it
+SPREAD_GRID = 2.0 ** np.linspace(-4, 1, 21)  # 0.06 to 2, with 1 in it
 
 
 def rmse(y: np.ndarray, pred: np.ndarray) -> np.ndarray:
