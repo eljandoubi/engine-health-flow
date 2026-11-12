@@ -1,6 +1,7 @@
 """Windows of consecutive steps taken inside one sequence."""
 
 import numpy as np
+import torch
 
 from engine_health_flow.data import Dataset
 
@@ -24,7 +25,7 @@ def gather(x, rows, window: int = WINDOW):
 
     Works on numpy arrays and on torch tensors, as long as x and rows are of the same kind.
     """
-    offsets = np.arange(window - 1, -1, -1)
-    if hasattr(rows, "device"):  # torch tensor
-        offsets = rows.new_tensor(offsets)
-    return x[rows[:, None] - offsets]
+    steps = np.arange(window - 1, -1, -1)
+    if isinstance(rows, torch.Tensor):
+        steps = torch.as_tensor(steps, device=rows.device)
+    return x[rows[:, None] - steps]
