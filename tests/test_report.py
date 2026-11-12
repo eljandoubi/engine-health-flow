@@ -1,6 +1,6 @@
 from engine_health_flow.cli import main
 from engine_health_flow.data import HEALTH_SHORT
-from engine_health_flow.report import indicator_table, load, main_table
+from engine_health_flow.report import indicator_table, load, main_table, paired_table
 
 
 def fake_model(rmse, posterior=True):
@@ -45,6 +45,22 @@ def test_indicator_table_has_one_column_per_indicator():
     lines = indicator_table([fake_result(0.001, 0.002)]).splitlines()
     assert lines[0].split("|")[2:-1] == [f" {name} " for name in HEALTH_SHORT]
     assert lines[2].split("|")[2:4] == [" 1.00 ", " 1.00 "]
+
+
+def test_paired_table_counts_the_folds_a_model_wins():
+    # per fold the flow beats the ridge by 0.5, 0.1 and loses by 0.2 (x1e-3)
+    folds = [fake_result(0.0020, 0.0015), fake_result(0.0013, 0.0012), fake_result(0.0010, 0.0012)]
+    table = paired_table(folds, pairs=(("flow", "ridge"),))
+    row = table.splitlines()[2]
+    assert row.split("|")[1].strip() == "flow - ridge"
+    assert "-0.13 (lower in 2 of 3)" in row
+    # the ridge has no CRPS, so there is nothing to compare there
+    assert row.split("|")[3].strip() == "-"
+
+
+def test_paired_table_skips_models_that_were_not_run():
+    table = paired_table([fake_result(0.001, 0.002)], pairs=(("hybrid", "ukf"), ("flow", "ridge")))
+    assert [line.split("|")[1].strip() for line in table.splitlines()[2:]] == ["flow - ridge"]
 
 
 def test_table_command_reads_the_files_that_run_wrote(synthetic_csv, tmp_path, capsys):

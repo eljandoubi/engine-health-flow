@@ -32,16 +32,25 @@ def _crps(model: dict, kind: str):
     return None if value is None else value * 1e3
 
 
+def _rmse(model: dict):
+    return _dig(model, "pooled", "rmse") * 1e3
+
+
+def _raw_crps(model: dict):
+    return _crps(model, "posterior")
+
+
 COLUMNS = [
-    ("RMSE x1e3", lambda m: _dig(m, "pooled", "rmse") * 1e3, 2),
+    ("RMSE x1e3", _rmse, 2),
     ("SMAPE", lambda m: _dig(m, "pooled", "smape"), 3),
     ("Pearson", lambda m: _dig(m, "pooled", "pearson"), 3),
-    ("CRPS x1e3", lambda m: _crps(m, "posterior"), 3),
+    ("CRPS x1e3", _raw_crps, 3),
     ("90% cover", lambda m: _coverage(m, "posterior"), 2),
     ("CRPS x1e3 rescaled", lambda m: _crps(m, "posterior_rescaled"), 3),
     ("90% cover rescaled", lambda m: _coverage(m, "posterior_rescaled"), 2),
     ("fit s", lambda m: m["fit_seconds"], 0),
 ]
+PAIRED_METRICS = [(_rmse, 2), (_raw_crps, 3)]
 
 
 def _cell(values: list, digits: int) -> str:
@@ -67,6 +76,28 @@ def main_table(results: list[dict]) -> str:
         models = [r["models"][name] for r in results if name in r["models"]]
         rows.append([name] + [_cell([get(m) for m in models], d) for _, get, d in COLUMNS])
     return _markdown(["model"] + [title for title, _, _ in COLUMNS], rows)
+
+
+PAIRS = (("hybrid", "ukf"), ("flow", "gru"), ("hybrid", "flow"))
+
+
+def _difference(results: list[dict], first: str, second: str, get, digits: int) -> str:
+    both = [(get(r["models"][first]), get(r["models"][second])) for r in results]
+    diffs = [a - b for a, b in both if a is not None and b is not None]
+    if not diffs:
+        return "-"
+    lower = sum(d < 0 for d in diffs)
+    return f"{np.mean(diffs):+.{digits}f} (lower in {lower} of {len(diffs)})"
+
+
+def paired_table(results: list[dict], pairs=PAIRS) -> str:
+    """First model minus second, fold by fold: the mean difference and how often it is below 0."""
+    rows = []
+    for first, second in pairs:
+        if first in results[0]["models"] and second in results[0]["models"]:
+            cells = [_difference(results, first, second, get, d) for get, d in PAIRED_METRICS]
+            rows.append([f"{first} - {second}", *cells])
+    return _markdown(["pair", "RMSE x1e3", "CRPS x1e3"], rows)
 
 
 def indicator_table(results: list[dict]) -> str:

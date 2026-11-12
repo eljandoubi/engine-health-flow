@@ -90,6 +90,9 @@ def main(argv: list[str] | None = None) -> None:
         print(report.main_table(results))
         print()
         print(report.indicator_table(results))
+        if len(results) > 1:
+            print()
+            print(report.paired_table(results))
     elif args.command == "missing":
         out = args.out or Path("results") / f"missing_fold{args.fold}.json"
         lose_a_phase(args.csv, args.fold, args.seed, out)
