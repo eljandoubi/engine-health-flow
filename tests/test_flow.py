@@ -60,16 +60,17 @@ def test_flow_model_tracks_synthetic_engines_better_than_the_mean(synthetic):
     assert err < 0.5 * baseline.mean()
 
 
-def test_flow_samples_have_the_right_shape_and_follow_the_seed(synthetic):
+def test_flow_draws_have_the_right_shape_and_follow_the_seed(synthetic):
     model, _, test = fitted_on_synthetic(synthetic)
     rows = window_rows(test, window=10)[:20]
-    a = model.samples(test, rows, n=6, seed=3)
-    assert a.shape == (20, 6, 10)
-    assert np.array_equal(a, model.samples(test, rows, n=6, seed=3))
-    assert not np.array_equal(a, model.samples(test, rows, n=6, seed=4))
+    mean, draws = model.posterior(test, rows, n=6, seed=3)
+    assert draws.shape == (20, 6, 10)
+    np.testing.assert_allclose(mean, draws.mean(1))
+    assert np.array_equal(draws, model.posterior(test, rows, n=6, seed=3)[1])
+    assert not np.array_equal(draws, model.posterior(test, rows, n=6, seed=4)[1])
 
 
 def test_flow_refuses_rows_whose_window_leaves_the_sequence(synthetic):
     model, _, test = fitted_on_synthetic(synthetic)
     with pytest.raises(ValueError, match="window"):
-        model.samples(test, np.array([test.starts[1] + 3]), n=2)
+        model.posterior(test, np.array([test.starts[1] + 3]), n=2)

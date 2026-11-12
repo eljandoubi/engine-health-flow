@@ -70,7 +70,7 @@ def run_fold(
 
     Every model is scored on the same rows: the ones that have a full window of steps behind
     them, one out of EVAL_STRIDE. options holds keyword arguments for each fit function. Models
-    that can draw samples of the posterior (the ukf and the flow) are scored on those too.
+    that can draw from the posterior (the ukf and the flow) are scored on the draws too.
     """
     options = options or {}
     split = make_folds(ds.n_seq)[fold]
@@ -88,9 +88,12 @@ def run_fold(
         models[name] = {"fit_seconds": round(time.time() - start, 1)}
         for part, (d, rows) in scored.items():
             truth = d.health[rows]
-            models[name][part] = point_metrics(truth, model.predict(d, rows))
-            if hasattr(model, "samples"):
-                models[name][part]["posterior"] = posterior_metrics(truth, model.samples(d, rows))
+            if hasattr(model, "posterior"):
+                point, draws = model.posterior(d, rows)
+                models[name][part] = point_metrics(truth, point)
+                models[name][part]["posterior"] = posterior_metrics(truth, draws)
+            else:
+                models[name][part] = point_metrics(truth, model.predict(d, rows))
         print(f"{name}: done after {time.time() - start:.0f}s", flush=True)
 
     return {

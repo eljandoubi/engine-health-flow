@@ -97,7 +97,7 @@ def test_dynamics_come_from_steps_inside_sequences(synthetic):
     assert dyn.jump.min() > 5 * dyn.drift.abs().max()
 
 
-def test_ukf_tracks_synthetic_engines_better_than_the_mean(synthetic):
+def fitted_ukf(synthetic):
     ds = synthetic(n_seq=10, length=120, jump_every=40)
     train, val, test = ds.take(range(6)), ds.take([6, 7]), ds.take([8, 9])
     model = fit_ukf(
@@ -111,6 +111,11 @@ def test_ukf_tracks_synthetic_engines_better_than_the_mean(synthetic):
         hidden=32,
         depth=2,
     )
+    return model, train, test
+
+
+def test_ukf_tracks_synthetic_engines_better_than_the_mean(synthetic):
+    model, train, test = fitted_ukf(synthetic)
     rows = window_rows(test)
     mean, std = model.filtered(test)
     assert mean.shape == std.shape == test.health.shape
@@ -119,3 +124,14 @@ def test_ukf_tracks_synthetic_engines_better_than_the_mean(synthetic):
     err = rmse(test.health[rows], model.predict(test, rows)).mean()
     baseline = rmse(test.health[rows], np.broadcast_to(train.health.mean(0), (len(rows), 10)))
     assert err < 0.5 * baseline.mean()
+
+
+def test_ukf_posterior_draws_follow_the_filtered_gaussian(synthetic):
+    model, _, test = fitted_ukf(synthetic)
+    rows = window_rows(test)[:30]
+    mean, draws = model.posterior(test, rows, n=4000)
+    want_mean, want_std = model.filtered(test)
+    assert draws.shape == (30, 4000, 10)
+    np.testing.assert_allclose(mean, want_mean[rows])
+    assert np.all(np.abs(draws.mean(1) - mean) < 5 * want_std[rows] / np.sqrt(4000))
+    np.testing.assert_allclose(draws.std(1), want_std[rows], rtol=0.1)

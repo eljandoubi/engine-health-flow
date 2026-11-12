@@ -80,18 +80,21 @@ def flow_loss(net: FlowPosterior, window, target, repeats: int = 4):
 
 
 class FlowModel(NeuralModel):
-    """predict() is the mean of the posterior draws, samples() gives the draws themselves."""
+    """predict() is the mean of the posterior draws, posterior() also gives the draws."""
 
     chunk = 128  # windows per pass, each of them is expanded to n draws
 
-    def samples(self, ds: Dataset, rows: np.ndarray, n: int = 64, seed: int = 0) -> np.ndarray:
-        """Draws of the health indicators in raw units, shape (len(rows), n, indicators)."""
+    def posterior(
+        self, ds: Dataset, rows: np.ndarray, n: int = 64, seed: int = 0
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Posterior mean at the rows, and n draws: (rows, indicators), (rows, n, indicators)."""
         generator = torch.Generator(self.device).manual_seed(seed)
         draws = [self.net.sample(b, n, generator=generator).cpu() for b in self._batches(ds, rows)]
-        return self.prep.health.inverse(torch.cat(draws).numpy())
+        draws = self.prep.health.inverse(torch.cat(draws).numpy())
+        return draws.mean(1), draws
 
     def predict(self, ds: Dataset, rows: np.ndarray) -> np.ndarray:
-        return self.samples(ds, rows).mean(1)
+        return self.posterior(ds, rows)[0]
 
 
 def fit_flow(
