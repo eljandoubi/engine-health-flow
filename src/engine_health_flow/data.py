@@ -1,5 +1,8 @@
-"""The benchmark csv: column layout, parsing and the in-memory dataset."""
+"""The benchmark csv: column layout, download, parsing and the in-memory dataset."""
 
+import hashlib
+import shutil
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +24,29 @@ HEALTH_SHORT = [f"{m}_{k}" for m in MODULES for k in ("eff", "flow")]
 PHASES = ["Cruise", "Takeoff", "Climb1", "Climb2"]
 SENSORS = ["HPC_Tout", "HP_Nmech", "HPC_Tin", "LPT_Tin", "Fuel_flow", "HPC_Pout_st", "LP_Nmech"]
 SENSOR_COLUMNS = [f"{p}_DeckSMR__{s}" for p in PHASES for s in SENSORS]
+
+
+def md5sum(path: Path) -> str:
+    digest = hashlib.md5(usedforsecurity=False)
+    with open(path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def download(dest: Path, url: str = URL, md5: str = MD5) -> Path:
+    """Fetch the csv to dest, unless a file with the right checksum is already there."""
+    if dest.exists() and md5sum(dest) == md5:
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    with urllib.request.urlopen(url) as src, open(part, "wb") as out:
+        shutil.copyfileobj(src, out, 1 << 20)
+    if md5sum(part) != md5:
+        part.unlink()
+        raise ValueError(f"checksum mismatch for {url}")
+    part.replace(dest)
+    return dest
 
 
 @dataclass
