@@ -4,6 +4,8 @@ from functools import partial
 
 import numpy as np
 
+SPREAD_GRID = np.geomspace(0.5, 2.0, 13)
+
 
 def rmse(y: np.ndarray, pred: np.ndarray) -> np.ndarray:
     return np.sqrt(((y - pred) ** 2).mean(0))
@@ -67,6 +69,22 @@ def interval_scores(y: np.ndarray, samples: np.ndarray, level: float) -> np.ndar
     """
     low, high = np.quantile(samples, [(1 - level) / 2, (1 + level) / 2], axis=1)
     return np.stack([((y >= low) & (y <= high)).mean(0), (high - low).mean(0)])
+
+
+def rescale_spread(mean: np.ndarray, draws: np.ndarray, scales: np.ndarray) -> np.ndarray:
+    """Move the draws towards or away from their mean, by one factor per indicator."""
+    return mean[:, None] + scales * (draws - mean[:, None])
+
+
+def spread_scales(
+    y: np.ndarray, mean: np.ndarray, draws: np.ndarray, grid: np.ndarray = SPREAD_GRID
+) -> np.ndarray:
+    """The factor per indicator that gives the lowest CRPS when it scales the spread of the draws.
+
+    A value above 1 means the draws were too tight, below 1 too wide.
+    """
+    scores = [crps_samples(y, rescale_spread(mean, draws, s)) for s in grid]
+    return grid[np.argmin(scores, axis=0)]
 
 
 def posterior_metrics(y: np.ndarray, samples: np.ndarray, levels=(0.5, 0.9), block=4096) -> dict:

@@ -8,8 +8,10 @@ from engine_health_flow.metrics import (
     pearson,
     point_metrics,
     posterior_metrics,
+    rescale_spread,
     rmse,
     smape,
+    spread_scales,
 )
 
 
@@ -117,6 +119,25 @@ def test_posterior_metrics_in_blocks_equals_in_one_go():
     assert blocks["intervals"]["0.9"]["coverage"] == pytest.approx(
         whole["intervals"]["0.9"]["coverage"]
     )
+
+
+def test_rescaling_keeps_the_mean_and_scales_the_spread():
+    rng = np.random.default_rng(5)
+    draws = rng.normal(size=(20, 300, 2))
+    mean = draws.mean(1)
+    out = rescale_spread(mean, draws, np.array([2.0, 0.5]))
+    np.testing.assert_allclose(out.mean(1), mean)
+    np.testing.assert_allclose(out.std(1), draws.std(1) * [2.0, 0.5])
+
+
+def test_spread_scales_find_draws_that_are_too_tight_or_too_wide():
+    rng = np.random.default_rng(6)
+    y = rng.normal(size=(2000, 3))
+    mean = np.zeros_like(y)
+    # truths have spread 1, the draws have 0.5, 2 and 1
+    draws = rng.normal(size=(2000, 100, 3)) * [0.5, 2.0, 1.0]
+    scales = spread_scales(y, mean, draws)
+    assert scales == pytest.approx([2.0, 0.5, 1.0], rel=0.15)
 
 
 def test_posterior_metrics_is_json_friendly():
