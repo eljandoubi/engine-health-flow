@@ -6,7 +6,7 @@ from torch import nn
 
 from engine_health_flow.data import Dataset
 from engine_health_flow.scaling import Prepared
-from engine_health_flow.training import fit, pick_device, random_rows, set_seed
+from engine_health_flow.training import fit, pick_device, random_rows, random_windows, set_seed
 from engine_health_flow.windows import WINDOW, gather, window_rows
 
 
@@ -44,6 +44,8 @@ class NeuralModel:
     full window inside its own sequence (see windows.window_rows).
     """
 
+    chunk = 4096  # windows per forward pass
+
     def __init__(
         self, prep: Prepared, net: nn.Module, device: torch.device, window: int | None = None
     ):
@@ -58,7 +60,7 @@ class NeuralModel:
             raise ValueError("a window would start before its sequence")
         x = torch.from_numpy(self.prep.x(ds)).to(self.device)
         r = torch.from_numpy(rows).to(self.device)
-        return (gather(x, chunk, self.window) for chunk in r.split(4096))
+        return (gather(x, part, self.window) for part in r.split(self.chunk))
 
     @torch.no_grad()
     def predict(self, ds: Dataset, rows: np.ndarray) -> np.ndarray:
@@ -107,10 +109,6 @@ def fit_gru(
     y = torch.from_numpy(prep.y(train)).to(dev)
     rows = torch.from_numpy(window_rows(train, window)).to(dev)
 
-    def draw():
-        r = rows[torch.randint(len(rows), (batch,), device=dev)]
-        return gather(x, r, window), y[r]
-
     net = WindowGRU(x.shape[1], y.shape[1], hidden).to(dev)
-    fit(net, draw, mse, steps, lr=lr)
+    fit(net, random_windows(x, y, rows, window, batch), mse, steps, lr=lr)
     return NeuralModel(prep, net, dev, window)

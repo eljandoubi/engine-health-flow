@@ -6,6 +6,8 @@ import numpy as np
 import torch
 from torch import nn
 
+from engine_health_flow.windows import gather
+
 
 def set_seed(seed: int) -> None:
     np.random.seed(seed)
@@ -29,6 +31,16 @@ def random_rows(x: torch.Tensor, y: torch.Tensor, batch: int):
     def draw():
         i = torch.randint(len(x), (batch,), device=x.device)
         return x[i], y[i]
+
+    return draw
+
+
+def random_windows(x: torch.Tensor, y: torch.Tensor, rows: torch.Tensor, window: int, batch: int):
+    """Like random_rows, but the batch is windows and the target of each last step."""
+
+    def draw():
+        last = rows[torch.randint(len(rows), (batch,), device=rows.device)]
+        return gather(x, last, window), y[last]
 
     return draw
 
