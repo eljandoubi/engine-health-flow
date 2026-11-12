@@ -7,6 +7,7 @@ from torch import nn
 from engine_health_flow.data import Dataset
 from engine_health_flow.scaling import Prepared
 from engine_health_flow.training import fit, pick_device, random_rows, set_seed
+from engine_health_flow.windows import WINDOW, gather, window_rows
 
 
 class MLP(nn.Module):
@@ -23,16 +24,45 @@ class MLP(nn.Module):
         return self.net(x)
 
 
-class NeuralModel:
-    """A trained net with the same predict() as the sklearn models."""
+class WindowGRU(nn.Module):
+    """Reads a window of steps and predicts the health indicators at its last step."""
 
-    def __init__(self, prep: Prepared, net: nn.Module, device: torch.device):
-        self.prep, self.net, self.device = prep, net, device
+    def __init__(self, n_in: int, n_out: int, hidden: int = 96):
+        super().__init__()
+        self.gru = nn.GRU(n_in, hidden, batch_first=True)
+        self.head = nn.Linear(hidden, n_out)
+
+    def forward(self, x):  # x: (batch, steps, n_in)
+        out, _ = self.gru(x)
+        return self.head(out[:, -1])
+
+
+class NeuralModel:
+    """A trained net with the same predict() as the sklearn models.
+
+    With a window the net reads the steps before each row too, so every row must have a
+    full window inside its own sequence (see windows.window_rows).
+    """
+
+    def __init__(
+        self, prep: Prepared, net: nn.Module, device: torch.device, window: int | None = None
+    ):
+        self.prep, self.net, self.device, self.window = prep, net, device, window
+
+    def _batches(self, ds: Dataset, rows: np.ndarray):
+        if self.window is None:
+            x = torch.from_numpy(self.prep.x(ds, rows)).to(self.device)
+            return x.split(16384)
+        first = ds.starts[np.searchsorted(ds.starts, rows, side="right") - 1]
+        if np.any(rows - (self.window - 1) < first):
+            raise ValueError("a window would start before its sequence")
+        x = torch.from_numpy(self.prep.x(ds)).to(self.device)
+        r = torch.from_numpy(rows).to(self.device)
+        return (gather(x, chunk, self.window) for chunk in r.split(4096))
 
     @torch.no_grad()
     def predict(self, ds: Dataset, rows: np.ndarray) -> np.ndarray:
-        x = torch.from_numpy(self.prep.x(ds, rows)).to(self.device)
-        z = torch.cat([self.net(chunk).cpu() for chunk in x.split(16384)])
+        z = torch.cat([self.net(b).cpu() for b in self._batches(ds, rows)])
         return self.prep.health.inverse(z.numpy())
 
 
@@ -58,3 +88,29 @@ def fit_mlp(
     net = MLP(x.shape[1], y.shape[1], hidden, depth).to(dev)
     fit(net, random_rows(x, y, batch), mse, steps, lr=lr)
     return NeuralModel(prep, net, dev)
+
+
+def fit_gru(
+    prep: Prepared,
+    train: Dataset,
+    window: int = WINDOW,
+    steps: int = 3000,
+    batch: int = 512,
+    hidden: int = 96,
+    lr: float = 2e-3,
+    device: str = "cpu",
+    seed: int = 0,
+) -> NeuralModel:
+    set_seed(seed)
+    dev = pick_device(device)
+    x = torch.from_numpy(prep.x(train)).to(dev)
+    y = torch.from_numpy(prep.y(train)).to(dev)
+    rows = torch.from_numpy(window_rows(train, window)).to(dev)
+
+    def draw():
+        r = rows[torch.randint(len(rows), (batch,), device=dev)]
+        return gather(x, r, window), y[r]
+
+    net = WindowGRU(x.shape[1], y.shape[1], hidden).to(dev)
+    fit(net, draw, mse, steps, lr=lr)
+    return NeuralModel(prep, net, dev, window)
