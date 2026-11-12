@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from engine_health_flow import data, experiment
+from engine_health_flow import data, experiment, report
 
 DEFAULT_CSV = Path("data/raw") / data.FILENAME
 
@@ -56,6 +56,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", type=Path, help="json file, default results/fold<k>.json")
 
+    p = sub.add_parser("table", help="print markdown tables from the files written by run")
+    p.add_argument("files", nargs="+", type=Path)
+
     args = parser.parse_args(argv)
     if args.command == "download":
         print(data.download(args.dest))
@@ -68,3 +71,8 @@ def main(argv: list[str] | None = None) -> None:
             parser.error(f"unknown models: {', '.join(sorted(unknown))}")
         out = args.out or Path("results") / f"fold{args.fold}.json"
         run(args.csv, args.fold, names, args.seed, out)
+    elif args.command == "table":
+        results = report.load(args.files)
+        print(report.main_table(results))
+        print()
+        print(report.indicator_table(results))
