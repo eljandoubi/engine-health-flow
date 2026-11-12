@@ -46,8 +46,10 @@ class Prepared:
         cols = informative_columns(train.sensors)
         return cls(cols, Scaler.fit(train.sensors[:, cols]), Scaler.fit(train.health))
 
-    def x(self, ds: Dataset) -> np.ndarray:
-        return self.sensors.transform(ds.sensors[:, self.cols])
+    def x(self, ds: Dataset, rows: np.ndarray | None = None) -> np.ndarray:
+        sensors = ds.sensors if rows is None else ds.sensors[rows]
+        return self.sensors.transform(sensors[:, self.cols])
 
-    def y(self, ds: Dataset) -> np.ndarray:
-        return self.health.transform(ds.health)
+    def y(self, ds: Dataset, rows: np.ndarray | None = None) -> np.ndarray:
+        health = ds.health if rows is None else ds.health[rows]
+        return self.health.transform(health)
