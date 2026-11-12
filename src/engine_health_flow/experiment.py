@@ -3,6 +3,7 @@
 import platform
 import subprocess
 import time
+from pathlib import Path
 
 import numpy as np
 import sklearn
@@ -46,14 +47,26 @@ def fit_model(name: str, prep: Prepared, train: Dataset, val: Dataset, seed: int
     raise ValueError(f"unknown model {name!r}, pick from {MODELS}")
 
 
-def git_commit() -> str:
+def git_commit(folder: Path = Path(__file__).parent) -> str:
+    """Short hash of HEAD, followed by -dirty when tracked files have uncommitted changes."""
     try:
-        run = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True
+        head = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=folder,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        changed = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=folder,
+            capture_output=True,
+            text=True,
+            check=True,
         )
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
-    return run.stdout.strip()
+    return head.stdout.strip() + ("-dirty" if changed.stdout.strip() else "")
 
 
 def environment() -> dict:

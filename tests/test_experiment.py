@@ -1,6 +1,8 @@
+import subprocess
+
 import pytest
 
-from engine_health_flow.experiment import fit_model, run_fold
+from engine_health_flow.experiment import fit_model, git_commit, run_fold
 from engine_health_flow.scaling import Prepared
 from engine_health_flow.splits import make_folds
 from engine_health_flow.windows import EVAL_STRIDE, WINDOW
@@ -80,3 +82,23 @@ def test_a_model_name_must_be_known(synthetic):
     ds = synthetic(n_seq=3)
     with pytest.raises(ValueError, match="svm"):
         fit_model("svm", Prepared.fit(ds), ds, ds, seed=0)
+
+
+def git(folder, *args):
+    base = ["git", "-c", "user.name=test", "-c", "user.email=test@example.com"]
+    subprocess.run([*base, *args], cwd=folder, check=True, capture_output=True)
+
+
+def test_git_commit_says_when_the_tree_has_uncommitted_changes(tmp_path):
+    git(tmp_path, "init", "-q")
+    (tmp_path / "a.txt").write_text("one")
+    git(tmp_path, "add", "a.txt")
+    git(tmp_path, "commit", "-q", "-m", "first")
+    clean = git_commit(tmp_path)
+    assert len(clean) >= 7 and not clean.endswith("-dirty")
+    (tmp_path / "a.txt").write_text("two")
+    assert git_commit(tmp_path) == clean + "-dirty"
+
+
+def test_git_commit_outside_a_repository(tmp_path):
+    assert git_commit(tmp_path) == "unknown"

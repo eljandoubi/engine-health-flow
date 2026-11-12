@@ -150,8 +150,8 @@ def fit_ukf(
     val: Dataset,
     seed: int = 0,
     surrogate: Surrogate | None = None,
-    q_scales: tuple[float, ...] = (4.0, 16.0, 64.0),
-    r_scales: tuple[float, ...] = (1.0, 1.5, 2.0),
+    q_scales: tuple[float, ...] = (16.0, 64.0, 256.0),
+    r_scales: tuple[float, ...] = (1.5, 2.0, 3.0),
     **surrogate_options,
 ) -> UKFModel:
     """Surrogate and step statistics come from train, the two noise scales from val.
