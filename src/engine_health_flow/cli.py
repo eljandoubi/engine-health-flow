@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from engine_health_flow import data, experiment, report
+from engine_health_flow import data, experiment, missing, report
 
 DEFAULT_CSV = Path("data/raw") / data.FILENAME
 
@@ -39,6 +39,14 @@ def run(csv: Path, fold: int, names: tuple[str, ...], seed: int, out: Path) -> N
     print(f"written to {out}")
 
 
+def lose_a_phase(csv: Path, fold: int, seed: int, out: Path) -> None:
+    results = missing.run_missing(data.read_csv(csv), fold, seed)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(results, indent=2) + "\n")
+    print(report.missing_table([results]))
+    print(f"written to {out}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="ehf", description="Turbofan health estimation benchmark")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -59,6 +67,12 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("table", help="print markdown tables from the files written by run")
     p.add_argument("files", nargs="+", type=Path)
 
+    p = sub.add_parser("missing", help="score the ukf and a flow when a flight phase is lost")
+    p.add_argument("--csv", type=Path, default=DEFAULT_CSV)
+    p.add_argument("--fold", type=int, default=0, choices=range(5))
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--out", type=Path, help="json file, default results/missing_fold<k>.json")
+
     args = parser.parse_args(argv)
     if args.command == "download":
         print(data.download(args.dest))
@@ -76,3 +90,6 @@ def main(argv: list[str] | None = None) -> None:
         print(report.main_table(results))
         print()
         print(report.indicator_table(results))
+    elif args.command == "missing":
+        out = args.out or Path("results") / f"missing_fold{args.fold}.json"
+        lose_a_phase(args.csv, args.fold, args.seed, out)

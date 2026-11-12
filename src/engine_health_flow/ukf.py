@@ -123,12 +123,25 @@ class UKFModel:
         self.prep, self.surrogate, self.dyn = prep, surrogate, dyn
         self.obs_cov, self.q_scale = obs_cov, q_scale
 
-    def filtered(self, ds: Dataset) -> tuple[np.ndarray, np.ndarray]:
-        """Mean and standard deviation of the health indicators on every row, in raw units."""
+    def filtered(
+        self, ds: Dataset, keep: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Mean and standard deviation of the health indicators on every row, in raw units.
+
+        keep lists the sensor channels that can be read, the others are left out of the update.
+        """
         y = _pad(self.prep.x(ds).astype(np.float64), ds)
+        h, obs_cov = self.surrogate, self.obs_cov
+        if keep is not None:
+            keep = torch.from_numpy(keep)
+            y, obs_cov = y[..., keep], obs_cov[keep][:, keep]
+
+            def h(state):
+                return self.surrogate(state)[:, keep]
+
         flagged = _pad(ds.maintenance, ds)
         lengths = torch.from_numpy(ds.lengths)
-        mean, var = ukf(self.surrogate, self.dyn, self.obs_cov, y, flagged, lengths, self.q_scale)
+        mean, var = ukf(h, self.dyn, obs_cov, y, flagged, lengths, self.q_scale)
         scale = self.prep.health.scale
         return self.prep.health.inverse(_unpad(mean, ds)), np.sqrt(_unpad(var, ds)) * scale
 
@@ -136,10 +149,10 @@ class UKFModel:
         return self.filtered(ds)[0][rows]
 
     def posterior(
-        self, ds: Dataset, rows: np.ndarray, n: int = 64, seed: int = 0
+        self, ds: Dataset, rows: np.ndarray, n: int = 64, seed: int = 0, keep=None
     ) -> tuple[np.ndarray, np.ndarray]:
         """The filtered mean at the rows and n Gaussian draws around it, (rows, n, indicators)."""
-        mean, std = self.filtered(ds)
+        mean, std = self.filtered(ds, keep)
         noise = np.random.default_rng(seed).standard_normal((len(rows), n, mean.shape[1]))
         return mean[rows], mean[rows, None] + std[rows, None] * noise
 

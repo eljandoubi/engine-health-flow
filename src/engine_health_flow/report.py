@@ -76,3 +76,23 @@ def indicator_table(results: list[dict]) -> str:
         per = np.array([r["models"][name]["test"]["rmse"] for r in results if name in r["models"]])
         rows.append([name] + [f"{v:.2f}" for v in per.mean(0) * 1e3])
     return _markdown(["model"] + HEALTH_SHORT, rows)
+
+
+def missing_table(results: list[dict]) -> str:
+    """Test scores of the ukf and the flow for each lost flight phase."""
+    columns = [
+        ("RMSE x1e3", "rmse", 1e3, 2),
+        ("CRPS x1e3", "crps_mean", 1e3, 3),
+        ("90% cover", "coverage_90", 1, 2),
+    ]
+    models = ("ukf", "flow")
+    header = ["lost phase"] + [f"{title} {m}" for title, _, _, _ in columns for m in models]
+    rows = []
+    for condition in results[0]["conditions"]:
+        cells = [condition]
+        for _, key, factor, digits in columns:
+            for model in models:
+                values = [r["conditions"][condition][model][key] * factor for r in results]
+                cells.append(_cell(values, digits))
+        rows.append(cells)
+    return _markdown(header, rows)

@@ -97,6 +97,14 @@ class FlowModel(NeuralModel):
         return self.posterior(ds, rows)[0]
 
 
+def _augmented(draw, augment):
+    def augmented():
+        window, target = draw()
+        return augment(window), target
+
+    return augmented
+
+
 def fit_flow(
     prep: Prepared,
     train: Dataset,
@@ -109,7 +117,9 @@ def fit_flow(
     lr: float = 1e-3,
     device: str = "cpu",
     seed: int = 0,
+    augment=None,
 ) -> FlowModel:
+    """augment, when given, changes every batch of training windows before the loss sees them."""
     set_seed(seed)
     dev = pick_device(device)
     x = torch.from_numpy(prep.x(train)).to(dev)
@@ -118,5 +128,8 @@ def fit_flow(
 
     net = FlowPosterior(x.shape[1], y.shape[1], hidden, field_hidden).to(dev)
     loss = partial(flow_loss, repeats=repeats)
-    fit(net, random_windows(x, y, rows, window, batch), loss, steps, lr=lr)
+    draw = random_windows(x, y, rows, window, batch)
+    if augment is not None:
+        draw = _augmented(draw, augment)
+    fit(net, draw, loss, steps, lr=lr)
     return FlowModel(prep, net, dev, window)
