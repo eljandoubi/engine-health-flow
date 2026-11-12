@@ -135,6 +135,12 @@ class UKFModel:
     def predict(self, ds: Dataset, rows: np.ndarray) -> np.ndarray:
         return self.filtered(ds)[0][rows]
 
+    def samples(self, ds: Dataset, rows: np.ndarray, n: int = 64, seed: int = 0) -> np.ndarray:
+        """Draws from the Gaussian of each health indicator, shape (len(rows), n, indicators)."""
+        mean, std = self.filtered(ds)
+        noise = np.random.default_rng(seed).standard_normal((len(rows), n, mean.shape[1]))
+        return mean[rows, None] + std[rows, None] * noise
+
 
 def fit_ukf(
     prep: Prepared,

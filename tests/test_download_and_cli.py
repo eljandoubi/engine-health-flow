@@ -48,11 +48,11 @@ def test_info_prints_counts(toy_csv, capsys):
     assert "3 maintenance events" in out
 
 
-def test_baselines_writes_the_metrics_file(synthetic_csv, tmp_path, capsys):
+def test_run_writes_the_metrics_file(synthetic_csv, tmp_path, capsys):
     out = tmp_path / "results" / "fold1.json"
     main(
         [
-            "baselines",
+            "run",
             "--csv",
             str(synthetic_csv),
             "--fold",
@@ -69,6 +69,6 @@ def test_baselines_writes_the_metrics_file(synthetic_csv, tmp_path, capsys):
     assert "ridge" in capsys.readouterr().out
 
 
-def test_baselines_refuses_an_unknown_model(synthetic_csv):
+def test_run_refuses_an_unknown_model(synthetic_csv):
     with pytest.raises(SystemExit):
-        main(["baselines", "--csv", str(synthetic_csv), "--models", "ridge,svm"])
+        main(["run", "--csv", str(synthetic_csv), "--models", "ridge,svm"])

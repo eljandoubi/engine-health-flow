@@ -1,4 +1,4 @@
-"""Fit the baselines on one fold and collect their metrics."""
+"""Fit the models on one fold and collect their metrics."""
 
 import platform
 import subprocess
@@ -10,14 +10,15 @@ import torch
 
 from engine_health_flow.baselines import fit_boosting, fit_ridge
 from engine_health_flow.data import Dataset
-from engine_health_flow.metrics import point_metrics
+from engine_health_flow.flow import fit_flow
+from engine_health_flow.metrics import point_metrics, posterior_metrics
 from engine_health_flow.neural import fit_gru, fit_mlp
 from engine_health_flow.scaling import Prepared
 from engine_health_flow.splits import make_folds
 from engine_health_flow.ukf import fit_ukf
 from engine_health_flow.windows import EVAL_STRIDE, WINDOW, window_rows
 
-MODELS = ("ridge", "boosting", "mlp", "gru", "ukf")
+MODELS = ("ridge", "boosting", "mlp", "gru", "ukf", "flow")
 
 
 def fit_model(name: str, prep: Prepared, train: Dataset, val: Dataset, seed: int, **options):
@@ -32,6 +33,8 @@ def fit_model(name: str, prep: Prepared, train: Dataset, val: Dataset, seed: int
         return fit_gru(prep, train, seed=seed, **options)
     if name == "ukf":
         return fit_ukf(prep, train, val, seed=seed, **options)
+    if name == "flow":
+        return fit_flow(prep, train, seed=seed, **options)
     raise ValueError(f"unknown model {name!r}, pick from {MODELS}")
 
 
@@ -56,7 +59,7 @@ def environment() -> dict:
     }
 
 
-def run_baselines(
+def run_fold(
     ds: Dataset,
     fold: int = 0,
     names: tuple[str, ...] = MODELS,
@@ -66,7 +69,8 @@ def run_baselines(
     """Metrics of each model on the validation and test sequences of one fold.
 
     Every model is scored on the same rows: the ones that have a full window of steps behind
-    them, one out of EVAL_STRIDE. options holds keyword arguments for each fit function.
+    them, one out of EVAL_STRIDE. options holds keyword arguments for each fit function. Models
+    that can draw samples of the posterior (the ukf and the flow) are scored on those too.
     """
     options = options or {}
     split = make_folds(ds.n_seq)[fold]
@@ -83,7 +87,11 @@ def run_baselines(
         model = fit_model(name, prep, train, val, seed, **options.get(name, {}))
         models[name] = {"fit_seconds": round(time.time() - start, 1)}
         for part, (d, rows) in scored.items():
-            models[name][part] = point_metrics(d.health[rows], model.predict(d, rows))
+            truth = d.health[rows]
+            models[name][part] = point_metrics(truth, model.predict(d, rows))
+            if hasattr(model, "samples"):
+                models[name][part]["posterior"] = posterior_metrics(truth, model.samples(d, rows))
+        print(f"{name}: done after {time.time() - start:.0f}s", flush=True)
 
     return {
         "fold": fold,

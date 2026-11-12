@@ -1,6 +1,6 @@
 import pytest
 
-from engine_health_flow.experiment import fit_model, run_baselines
+from engine_health_flow.experiment import fit_model, run_fold
 from engine_health_flow.scaling import Prepared
 from engine_health_flow.splits import make_folds
 from engine_health_flow.windows import EVAL_STRIDE, WINDOW
@@ -16,22 +16,34 @@ FAST = {
         "q_scales": (1.0,),
         "r_scales": (1.0,),
     },
+    "flow": {"steps": 5, "batch": 16, "repeats": 2, "hidden": 8, "field_hidden": 16},
 }
 
 
 def test_every_model_gets_val_and_test_metrics(synthetic):
     ds = synthetic(n_seq=10, length=80, jump_every=30)
-    out = run_baselines(ds, names=("ridge", "mlp", "gru", "ukf"), options=FAST)
-    assert list(out["models"]) == ["ridge", "mlp", "gru", "ukf"]
+    names = ("ridge", "mlp", "gru", "ukf", "flow")
+    out = run_fold(ds, names=names, options=FAST)
+    assert list(out["models"]) == list(names)
     for res in out["models"].values():
         for part in ("val", "test"):
             assert len(res[part]["rmse"]) == 10
             assert res[part]["pooled"]["rmse"] > 0
 
 
+def test_only_models_that_sample_get_posterior_scores(synthetic):
+    ds = synthetic(n_seq=10, length=80, jump_every=30)
+    out = run_fold(ds, names=("ridge", "ukf", "flow"), options=FAST)
+    has_posterior = {name: "posterior" in res["test"] for name, res in out["models"].items()}
+    assert has_posterior == {"ridge": False, "ukf": True, "flow": True}
+    posterior = out["models"]["ukf"]["test"]["posterior"]
+    assert len(posterior["crps"]) == 10
+    assert set(posterior["intervals"]) == {"0.5", "0.9"}
+
+
 def test_only_rows_with_a_full_window_are_scored(synthetic):
     ds = synthetic(n_seq=10, length=80)
-    out = run_baselines(ds, fold=2, names=("ridge",))
+    out = run_fold(ds, fold=2, names=("ridge",))
     per_sequence = len(range(WINDOW - 1, 80, EVAL_STRIDE))
     fold = make_folds(10)[2]
     assert out["scored_rows"] == {
@@ -46,7 +58,7 @@ def test_only_rows_with_a_full_window_are_scored(synthetic):
 
 
 def test_ridge_follows_linear_synthetic_data(synthetic):
-    out = run_baselines(synthetic(n_seq=10, length=80), names=("ridge",))
+    out = run_fold(synthetic(n_seq=10, length=80), names=("ridge",))
     assert out["models"]["ridge"]["test"]["pooled"]["pearson"] > 0.9
 
 
