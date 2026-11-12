@@ -1,7 +1,16 @@
 import numpy as np
 import pytest
+from scipy.stats import norm
 
-from engine_health_flow.metrics import pearson, point_metrics, rmse, smape
+from engine_health_flow.metrics import (
+    crps_samples,
+    interval_scores,
+    pearson,
+    point_metrics,
+    posterior_metrics,
+    rmse,
+    smape,
+)
 
 
 def test_rmse_per_column():
@@ -50,3 +59,68 @@ def test_point_metrics_is_json_friendly():
 
     y = np.random.default_rng(2).normal(size=(10, 2)).astype(np.float32)
     json.dumps(point_metrics(y, y * 0.9))
+
+
+def gaussian_crps(y, mean, std):
+    z = (y - mean) / std
+    return std * (z * (2 * norm.cdf(z) - 1) + 2 * norm.pdf(z) - 1 / np.sqrt(np.pi))
+
+
+def test_crps_of_small_hand_made_samples():
+    one = np.array([[1.0]])
+    # three evenly spread samples centred on the truth
+    assert crps_samples(one, np.array([[[0.0], [1.0], [2.0]]])) == pytest.approx([0.0])
+    # no spread at all: the score is the distance to the truth
+    assert crps_samples(one, np.array([[[3.0], [3.0], [3.0]]])) == pytest.approx([2.0])
+
+
+def test_crps_matches_the_gaussian_closed_form():
+    rng = np.random.default_rng(0)
+    mean, std = rng.normal(size=(400, 2)), rng.uniform(0.5, 2.0, size=(400, 2))
+    y = mean + std * rng.normal(size=mean.shape)
+    samples = mean[:, None] + std[:, None] * rng.normal(size=(400, 500, 2))
+    want = gaussian_crps(y, mean, std).mean(0)
+    assert crps_samples(y, samples) == pytest.approx(want, rel=0.02)
+
+
+def test_crps_prefers_the_calibrated_spread():
+    rng = np.random.default_rng(1)
+    y = rng.normal(size=(600, 1))
+
+    def draw(scale):
+        return scale * rng.normal(size=(600, 200, 1))
+
+    best = crps_samples(y, draw(1.0))
+    assert best < crps_samples(y, draw(0.2))
+    assert best < crps_samples(y, draw(4.0))
+
+
+def test_interval_scores_on_a_uniform_grid():
+    grid = np.linspace(0, 1, 101)[None, :, None] * np.ones((3, 1, 1))
+    y = np.array([[0.5], [0.9], [1.5]])
+    cover50, width50 = interval_scores(y, grid, 0.5)
+    cover90, width90 = interval_scores(y, grid, 0.9)
+    # the first truth is inside both, the second only inside the 90 % interval, the third in none
+    assert cover50 == pytest.approx([1 / 3])
+    assert cover90 == pytest.approx([2 / 3])
+    assert width50 == pytest.approx([0.5])
+    assert width90 == pytest.approx([0.9])
+
+
+def test_posterior_metrics_in_blocks_equals_in_one_go():
+    rng = np.random.default_rng(3)
+    y = rng.normal(size=(50, 3))
+    samples = y[:, None] + rng.normal(size=(50, 40, 3))
+    whole = posterior_metrics(y, samples, block=50)
+    blocks = posterior_metrics(y, samples, block=7)
+    assert blocks["crps"] == pytest.approx(whole["crps"])
+    assert blocks["intervals"]["0.9"]["coverage"] == pytest.approx(
+        whole["intervals"]["0.9"]["coverage"]
+    )
+
+
+def test_posterior_metrics_is_json_friendly():
+    import json
+
+    y = np.zeros((5, 2))
+    json.dumps(posterior_metrics(y, np.random.default_rng(4).normal(size=(5, 8, 2))))
