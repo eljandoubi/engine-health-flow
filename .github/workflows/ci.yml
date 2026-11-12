@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      # cpu build of torch: the locked linux wheels pull 15 CUDA packages the tests never use
+      - name: Install
+        run: |
+          uv venv
+          uv pip install --torch-backend cpu torch
+          uv pip install -e . --group dev
+      - run: uv run --no-sync ruff check .
+      - run: uv run --no-sync ruff format --check .
+      - run: uv run --no-sync pytest
