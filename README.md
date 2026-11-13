@@ -135,7 +135,7 @@ uv run ehf missing --fold 0      # the missing flight phase experiment
 uv run pytest
 ```
 
-`ehf run --models ridge,ukf` runs a subset. Everything runs on the CPU. The scripts in `scripts/` make the figure and the extra analyses quoted above.
+`ehf run --models ridge,ukf` runs a subset. Everything runs on the CPU. The tables above come from the files in `results/`, which store the hardware, the seed, the date and the commit of the run. The other numbers quoted come from the scripts in `scripts/`; what they printed is saved in `results/analysis/`.
 
 ## Layout
 
