@@ -33,6 +33,7 @@ def test_main_table_averages_over_folds_and_marks_missing_scores():
     flow_cells = [c.strip() for c in rows["flow"].strip("|").split("|")]
     assert ridge_cells[4:8] == ["-", "-", "-", "-"]  # no posterior, no CRPS or coverage
     assert flow_cells[4] == "0.400 ± 0.000" and flow_cells[5] == "0.85 ± 0.00"
+    assert "fit" not in table.splitlines()[0]  # the wall clock includes time asleep
 
 
 def test_main_table_of_one_fold_has_no_spread():
@@ -56,6 +57,14 @@ def test_paired_table_counts_the_folds_a_model_wins():
     assert "-0.13 (lower in 2 of 3)" in row
     # the ridge has no CRPS, so there is nothing to compare there
     assert row.split("|")[3].strip() == "-"
+
+
+def test_paired_table_compares_the_rescaled_crps_too():
+    results = [{"models": {"ukf": fake_model(0.0010), "hybrid": fake_model(0.0009)}}]
+    cells = paired_table(results).splitlines()[2].split("|")
+    assert cells[1].strip() == "hybrid - ukf"
+    assert "-0.10 (lower in 1 of 1)" in cells[2]  # rmse x1e3
+    assert "+0.000 (lower in 0 of 1)" in cells[4]  # same fake CRPS for both
 
 
 def test_paired_table_skips_models_that_were_not_run():

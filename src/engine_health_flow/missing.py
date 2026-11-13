@@ -6,7 +6,7 @@ import torch
 from engine_health_flow.data import PHASES, SENSORS, Dataset
 from engine_health_flow.experiment import environment
 from engine_health_flow.flow import FlowModel, fit_flow
-from engine_health_flow.metrics import posterior_metrics
+from engine_health_flow.metrics import posterior_metrics, rescale_spread, spread_scales
 from engine_health_flow.scaling import Prepared
 from engine_health_flow.splits import make_folds
 from engine_health_flow.ukf import fit_ukf
@@ -59,12 +59,18 @@ def drop_phases(prep: Prepared, p: float = 0.25):
     return augment
 
 
-def _scores(truth: np.ndarray, mean: np.ndarray, draws: np.ndarray) -> dict:
-    posterior = posterior_metrics(truth, draws)
+def _scores(truth: np.ndarray, mean: np.ndarray, draws: np.ndarray, scales: np.ndarray) -> dict:
+    """RMSE, CRPS and 90 % coverage of the draws, and the same two for the rescaled draws."""
+
+    def crps_and_coverage(samples: np.ndarray) -> dict:
+        posterior = posterior_metrics(truth, samples)
+        covered = np.mean(posterior["intervals"]["0.9"]["coverage"])
+        return {"crps_mean": posterior["crps_mean"], "coverage_90": float(covered)}
+
     return {
         "rmse": float(np.sqrt(((truth - mean) ** 2).mean())),
-        "crps_mean": posterior["crps_mean"],
-        "coverage_90": float(np.mean(posterior["intervals"]["0.9"]["coverage"])),
+        **crps_and_coverage(draws),
+        "rescaled": crps_and_coverage(rescale_spread(mean, draws, scales)),
     }
 
 
@@ -74,7 +80,8 @@ def run_missing(
     """Test scores of the ukf and of a flow trained with phase dropout, for each lost phase.
 
     The ukf and the flow are fitted once. Then every phase is taken away in turn at test time
-    (and none, for reference). The ukf keeps the noise scales it chose with all sensors.
+    (and none, for reference). The ukf keeps the noise scales it chose with all sensors, and both
+    models keep the spread factors fitted on validation with all sensors present.
     """
     split = make_folds(ds.n_seq)[fold]
     train, val, test = ds.take(split.train), ds.take(split.val), ds.take(split.test)
@@ -83,6 +90,13 @@ def run_missing(
     flow = fit_flow(
         PhaseFlags(prep), train, seed=seed, augment=drop_phases(prep), **(flow_options or {})
     )
+
+    val_rows = window_rows(val, WINDOW, EVAL_STRIDE)
+    models = {"ukf": filter_, "flow": FlowModel(PhaseFlags(prep), flow.net, flow.device, WINDOW)}
+    scales = {}
+    for name, model in models.items():
+        mean, draws = model.posterior(val, val_rows)
+        scales[name] = spread_scales(val.health[val_rows], mean, draws)
 
     rows = window_rows(test, WINDOW, EVAL_STRIDE)
     truth = test.health[rows]
@@ -93,8 +107,8 @@ def run_missing(
         keep = None if missing is None else np.flatnonzero(phase != missing)
         reader = FlowModel(PhaseFlags(prep, missing), flow.net, flow.device, WINDOW)
         conditions[label] = {
-            "ukf": _scores(truth, *filter_.posterior(test, rows, keep=keep)),
-            "flow": _scores(truth, *reader.posterior(test, rows)),
+            "ukf": _scores(truth, *filter_.posterior(test, rows, keep=keep), scales["ukf"]),
+            "flow": _scores(truth, *reader.posterior(test, rows), scales["flow"]),
         }
         print(f"{label}: done", flush=True)
     return {
@@ -102,5 +116,6 @@ def run_missing(
         "seed": seed,
         "scored_rows": len(rows),
         "environment": environment(),
+        "spread_scales": {name: s.tolist() for name, s in scales.items()},
         "conditions": conditions,
     }

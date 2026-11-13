@@ -128,11 +128,11 @@ def run_fold(
 
     models = {}
     for name in names:
-        start = time.time()
+        start = time.monotonic()  # unlike time.time() it does not count a sleeping laptop
         model = fit_model(name, prep, train, val, seed, **options.get(name, {}))
-        models[name] = {"fit_seconds": round(time.time() - start, 1)}
+        models[name] = {"fit_seconds": round(time.monotonic() - start, 1)}
         models[name].update(score_model(model, scored))
-        print(f"{name}: done after {time.time() - start:.0f}s", flush=True)
+        print(f"{name}: done after {time.monotonic() - start:.0f}s", flush=True)
 
     return {
         "fold": fold,

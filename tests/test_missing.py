@@ -88,10 +88,18 @@ def test_run_missing_scores_every_lost_phase(synthetic):
         for model in ("ukf", "flow"):
             assert scores[model]["rmse"] > 0
             assert 0 <= scores[model]["coverage_90"] <= 1
+            rescaled = scores[model]["rescaled"]
+            assert rescaled["crps_mean"] > 0 and 0 <= rescaled["coverage_90"] <= 1
+    assert set(out["spread_scales"]) == {"ukf", "flow"}
+    assert all(len(s) == 10 for s in out["spread_scales"].values())
 
 
 def test_missing_table_has_one_row_per_condition():
-    scores = {"rmse": 0.001, "crps_mean": 0.0004, "coverage_90": 0.9}
+    scores = {
+        "rmse": 0.001,
+        "coverage_90": 0.9,
+        "rescaled": {"crps_mean": 0.0003, "coverage_90": 0.85},
+    }
     result = {
         "conditions": {
             "none": {"ukf": scores, "flow": scores},
@@ -102,3 +110,4 @@ def test_missing_table_has_one_row_per_condition():
     assert lines[0].startswith("| lost phase | RMSE x1e3 ukf | RMSE x1e3 flow |")
     assert [line.split("|")[1].strip() for line in lines[2:]] == ["none", "Cruise"]
     assert "1.00" in lines[2] and "0.90" in lines[2]
+    assert "0.300" in lines[2] and "0.85" in lines[2]  # rescaled CRPS and coverage

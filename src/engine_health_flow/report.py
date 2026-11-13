@@ -40,17 +40,20 @@ def _raw_crps(model: dict):
     return _crps(model, "posterior")
 
 
+def _rescaled_crps(model: dict):
+    return _crps(model, "posterior_rescaled")
+
+
 COLUMNS = [
     ("RMSE x1e3", _rmse, 2),
     ("SMAPE", lambda m: _dig(m, "pooled", "smape"), 3),
     ("Pearson", lambda m: _dig(m, "pooled", "pearson"), 3),
     ("CRPS x1e3", _raw_crps, 3),
     ("90% cover", lambda m: _coverage(m, "posterior"), 2),
-    ("CRPS x1e3 rescaled", lambda m: _crps(m, "posterior_rescaled"), 3),
+    ("CRPS x1e3 rescaled", _rescaled_crps, 3),
     ("90% cover rescaled", lambda m: _coverage(m, "posterior_rescaled"), 2),
-    ("fit s", lambda m: m["fit_seconds"], 0),
 ]
-PAIRED_METRICS = [(_rmse, 2), (_raw_crps, 3)]
+PAIRED_METRICS = [(_rmse, 2), (_raw_crps, 3), (_rescaled_crps, 3)]
 
 
 def _cell(values: list, digits: int) -> str:
@@ -97,7 +100,7 @@ def paired_table(results: list[dict], pairs=PAIRS) -> str:
         if first in results[0]["models"] and second in results[0]["models"]:
             cells = [_difference(results, first, second, get, d) for get, d in PAIRED_METRICS]
             rows.append([f"{first} - {second}", *cells])
-    return _markdown(["pair", "RMSE x1e3", "CRPS x1e3"], rows)
+    return _markdown(["pair", "RMSE x1e3", "CRPS x1e3", "CRPS x1e3 rescaled"], rows)
 
 
 def indicator_table(results: list[dict]) -> str:
@@ -109,21 +112,24 @@ def indicator_table(results: list[dict]) -> str:
     return _markdown(["model"] + HEALTH_SHORT, rows)
 
 
+MISSING_COLUMNS = [
+    ("RMSE x1e3", lambda s: s["rmse"] * 1e3, 2),
+    ("CRPS x1e3 rescaled", lambda s: s["rescaled"]["crps_mean"] * 1e3, 3),
+    ("90% cover", lambda s: s["coverage_90"], 2),
+    ("90% cover rescaled", lambda s: s["rescaled"]["coverage_90"], 2),
+]
+
+
 def missing_table(results: list[dict]) -> str:
     """Test scores of the ukf and the flow for each lost flight phase."""
-    columns = [
-        ("RMSE x1e3", "rmse", 1e3, 2),
-        ("CRPS x1e3", "crps_mean", 1e3, 3),
-        ("90% cover", "coverage_90", 1, 2),
-    ]
     models = ("ukf", "flow")
-    header = ["lost phase"] + [f"{title} {m}" for title, _, _, _ in columns for m in models]
+    header = ["lost phase"] + [f"{title} {m}" for title, _, _ in MISSING_COLUMNS for m in models]
     rows = []
     for condition in results[0]["conditions"]:
         cells = [condition]
-        for _, key, factor, digits in columns:
+        for _, get, digits in MISSING_COLUMNS:
             for model in models:
-                values = [r["conditions"][condition][model][key] * factor for r in results]
+                values = [get(r["conditions"][condition][model]) for r in results]
                 cells.append(_cell(values, digits))
         rows.append(cells)
     return _markdown(header, rows)
