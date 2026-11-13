@@ -124,10 +124,6 @@ Status: reproducible research code, not production tested. Simulated numbers onl
 - The result files of the five folds were written at commit 0f2744c and the missing phase file at commit 5e4d923. In between only the tables, the scoring of the missing phase experiment and a timing line changed, not the models.
 - Not done: other noise levels, operating changes, anomaly detection, any real data. The missing phase experiment runs on one fold only.
 
-## How this was built
-
-I chose the problem, the protocol and the models, and read the results. Almost all of the code and the tests were written with an AI coding assistant (GitHub Copilot in VS Code), step by step in small commits. The tables come from the files in `results/`, which store the hardware, the seed, the date and the commit of the run. The other numbers quoted above come from the scripts in `scripts/`; what they printed is saved in `results/analysis/`.
-
 ## Reproduce
 
 ```
@@ -139,7 +135,7 @@ uv run ehf missing --fold 0      # the missing flight phase experiment
 uv run pytest
 ```
 
-`ehf run --models ridge,ukf` runs a subset. Everything runs on the CPU. The scripts in `scripts/` make the figure and the extra analyses quoted above.
+`ehf run --models ridge,ukf` runs a subset. Everything runs on the CPU. The tables above come from the files in `results/`, which store the hardware, the seed, the date and the commit of the run. The other numbers quoted come from the scripts in `scripts/`; what they printed is saved in `results/analysis/`.
 
 ## Layout
 
