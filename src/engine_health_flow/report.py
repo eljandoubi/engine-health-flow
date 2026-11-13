@@ -81,7 +81,7 @@ def main_table(results: list[dict]) -> str:
     return _markdown(["model"] + [title for title, _, _ in COLUMNS], rows)
 
 
-PAIRS = (("hybrid", "ukf"), ("flow", "gru"), ("hybrid", "flow"))
+PAIRS = (("hybrid", "ukf"), ("flow", "gru"), ("flow", "ukf"), ("hybrid", "flow"))
 
 
 def _difference(results: list[dict], first: str, second: str, get, digits: int) -> str:
