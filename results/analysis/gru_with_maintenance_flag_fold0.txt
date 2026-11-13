@@ -1,0 +1,4 @@
+# uv run python scripts/gru_with_maintenance_flag.py --fold 0   (2026-11-13)
+gru with the maintenance flag, test RMSE x1e3: 1.174
+gru in results/fold0.json: 1.157
+ukf in results/fold0.json: 0.892

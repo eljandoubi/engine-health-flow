@@ -1,0 +1,5 @@
+# uv run python scripts/training_budget.py --fold 0   (2026-11-13)
+mlp 20000 steps, val: RMSE x1e3 1.817  SMAPE 0.171  Pearson 0.9643
+mlp 20000 steps, test: RMSE x1e3 1.822  SMAPE 0.177  Pearson 0.9623
+gru 12000 steps, val: RMSE x1e3 1.220  SMAPE 0.103  Pearson 0.9840
+gru 12000 steps, test: RMSE x1e3 1.285  SMAPE 0.108  Pearson 0.9813

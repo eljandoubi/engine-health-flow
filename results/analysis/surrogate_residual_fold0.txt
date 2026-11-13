@@ -1,0 +1,5 @@
+# uv run python scripts/surrogate_residual.py --fold 0   (2026-11-13)
+surrogate residual, train sequences: 0.0509 (min 0.0460, max 0.0571)
+surrogate residual, validation sequences: 0.0558 (min 0.0505, max 0.0587)
+sensor noise from second differences:  0.0576 (min 0.0527, max 0.0626)
+linear map residual, validation:       0.1083 (min 0.0572, max 0.2794)

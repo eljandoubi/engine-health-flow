@@ -1,0 +1,13 @@
+# uv run python scripts/error_by_time_since_maintenance.py --fold 0   (2026-11-13)
+ukf noise scales: process 256.0, measurement 3.0
+ukf RMSE x1e3 on the train sequences: 0.822
+ukf RMSE x1e3 on the val sequences: 0.897
+ukf RMSE x1e3 on the test sequences: 0.892
+
+Test RMSE x1e3, ukf / gru, by rows since the last maintenance
+  rows since  scored rows    3 hard indicators       7 others
+     0 to 50         5757          1.37 / 1.55    0.43 / 0.45
+   50 to 100         6730          1.33 / 1.61    0.32 / 0.37
+  100 to 200        13011          1.48 / 1.88    0.33 / 0.42
+  200 to 300        10268          1.66 / 2.17    0.34 / 0.50
+300 and more         7677          1.74 / 2.42    0.35 / 0.60
