@@ -1,6 +1,6 @@
 # engine-health-flow
 
-Estimating the health of a turbofan engine from noisy sensors. The repo has four standard baselines, an unscented Kalman filter (UKF) on a learned model of the sensors, and a flow matching model that returns samples instead of one number. Code, tests and the result files of every run are here.
+This project estimates turbofan health from noisy sensors. It compares four baselines, an unscented Kalman filter (UKF) with a learned sensor function, and flow matching that returns samples.
 
 The task and the data come from the public Safran Tech / IRT SystemX benchmark (Leyli-Abadi et al., [arXiv 2604.08460](https://arxiv.org/abs/2604.08460)). I am not affiliated with Safran. All engines are simulated.
 
@@ -16,7 +16,7 @@ The data is a CC-BY-4.0 Zenodo record ([sandbox record 469530](https://sandbox.z
 - Every model is scored on the same rows: every fifth row that has at least 49 rows before it in its sequence (43,443 test rows on fold 0).
 - RMSE, SMAPE and Pearson are computed on all indicators pooled. My SMAPE counts 0 / 0 as no error, the paper does not say what it does there.
 - Models that give samples are also scored with the CRPS and with the coverage of their 90 % intervals.
-- What is chosen is chosen on the validation sequences: the two noise scales of the UKF and the spread factors described below.
+- Validation sequences determine the two UKF noise scales and the spread factors described below.
 - The paper tunes every model with Optuna on the validation set. Here the baselines and the flows get a fixed number of training steps and no tuning.
 
 ## Results
@@ -62,24 +62,24 @@ For orientation, Table 1 of the paper gives, as 5-fold averages of the RMSE x1e3
 
 ## Models
 
-- **ridge, boosting, MLP**: regressors on one row of sensors. **GRU**: reads a window of 50 rows.
-- **surrogate**: a linear map plus an MLP from the 10 indicators to the 25 sensors. It stands in for the physics simulator, which is Linux only and not part of the data. On held-out sequences its residual is 0.056 standard deviations of a sensor (median over the sensors, fold 0), against 0.058 for the sensor noise estimated from second differences and 0.108 for a linear map alone (`scripts/surrogate_residual.py`).
-- **ukf**: unscented Kalman filter in torch, run on all sequences of a batch at once. The state is the 10 indicators. Between two flights they follow a random walk with drift, except on a flagged maintenance row, where the step has the mean and covariance of the maintenance jumps in the training data. The two noise scales are picked on validation.
-- **flow**: a GRU reads the last 50 rows and gives a context vector. An MLP velocity field moves noise to the 10 indicators along straight paths (conditional flow matching with optimal transport paths). Samples come from 8 Heun steps, 64 draws per row.
-- **hybrid**: the same flow, but every row also carries the UKF mean and log standard deviation, so the window sees what a filter with the whole history made of the sensors.
-- **spread factors**: one factor per indicator that scales the spread of the draws around their mean, fitted on validation to minimise the CRPS and then applied to the test rows.
-- **phase dropout** (missing phase experiment): the flow is trained with whole flight phases of sensors randomly removed and flags that say which ones are there. The UKF just leaves the lost readings out of its update.
+- ridge, boosting, MLP: regressors on one row of sensors. GRU: reads a window of 50 rows.
+- surrogate: a linear map plus an MLP from the 10 indicators to the 25 sensors. It stands in for the physics simulator, which is Linux only and not part of the data. On held-out sequences its residual is 0.056 standard deviations of a sensor (median over the sensors, fold 0), against 0.058 for the sensor noise estimated from second differences and 0.108 for a linear map alone (`scripts/surrogate_residual.py`).
+- ukf: unscented Kalman filter in torch, run on all sequences of a batch at once. The state is the 10 indicators. Between two flights they follow a random walk with drift, except on a flagged maintenance row, where the step has the mean and covariance of the maintenance jumps in the training data. The two noise scales are picked on validation.
+- flow: a GRU reads the last 50 rows and gives a context vector. An MLP velocity field moves noise to the 10 indicators along straight paths (conditional flow matching with optimal transport paths). Samples come from 8 Heun steps, 64 draws per row.
+- hybrid: the same flow, but every row also carries the UKF mean and log standard deviation, so the window sees what a filter with the whole history made of the sensors.
+- spread factors: one factor per indicator that scales the spread of the draws around their mean, fitted on validation to minimise the CRPS and then applied to the test rows.
+- phase dropout (missing phase experiment): the flow is trained with whole flight phases of sensors randomly removed and flags that say which ones are there. The UKF just leaves the lost readings out of its update.
 
 All models read the 25 standardised sensor channels. Only the UKF also reads the maintenance flag; the hybrid gets it through the filter.
 
 ## What the results say
 
-- **The UKF beats every baseline and the flow on RMSE.** 0.87 against 1.09 for the GRU (20 % lower, and lower in all 5 folds) and 1.36 for the ridge. The comparison is not like for like: the UKF filters the whole sequence and knows where the maintenance events are, the others see one row or 50 rows. A control on fold 0 shows that the flag alone does not explain the gap: a GRU that also gets the flag as an input channel scores 1.17, the same as the GRU without it (1.16), against 0.89 for the UKF (`scripts/gru_with_maintenance_flag.py`, one seed).
-- **The flow beats the GRU that reads the same window**: 9 % lower RMSE in all 5 folds, and it also gives a distribution. It stays 14 % behind the UKF, in all 5 folds.
-- **The CRPS needs a fair width.** The raw 90 % intervals of the UKF cover 98 % of the truth, so they are too wide; those of the flow cover 94 %. On the raw CRPS the flow beats the UKF (0.375 against 0.420, in all 5 folds), but that mostly measures the width. With one spread factor per indicator fitted on validation, the UKF is ahead (0.344 against 0.363, the flow is better in 1 fold of 5). After the rescaling the 90 % intervals cover 82 % (UKF), 86 % (flow) and 87 % (hybrid): the width that minimises the CRPS is narrower than the nominal one, because the errors have heavier tails than a Gaussian.
-- **The hybrid is the best model on every column of the table, by a small margin.** RMSE 0.84 against 0.87 for the UKF: lower in all 5 folds, but by only 0.006 to 0.050 per fold, and the standard deviation over folds is 0.04. The rescaled CRPS gain is larger, 0.318 against 0.344 (7.6 %, 5 of 5 folds). Reading the filter makes the flow much better (0.84 against 0.99 for the flow alone). The gain comes from the hard indicators below; the hybrid is a little worse than the UKF on a few easy ones (for example CmpFan_flow 0.12 against 0.09, CmpH_eff 0.25 against 0.21, TrbH_flow 0.19 against 0.17).
-- **Three indicators carry the error.** CmpFan_eff, TrbL_eff and TrbL_flow make up about 89 % of the squared error of the UKF. The paper also finds them weakly observable.
-- **Time since the last maintenance.** The table is RMSE x1e3, UKF / GRU, on the test sequences of fold 0 (`scripts/error_by_time_since_maintenance.py`). "Rows since" counts from the last maintenance event or from the start of the sequence.
+- The UKF beats every baseline and the flow on RMSE. 0.87 against 1.09 for the GRU (20 % lower, and lower in all 5 folds) and 1.36 for the ridge. The comparison is not like for like: the UKF filters the whole sequence and knows where the maintenance events are, the others see one row or 50 rows. A control on fold 0 shows that the flag alone does not explain the gap: a GRU that also gets the flag as an input channel scores 1.17, the same as the GRU without it (1.16), against 0.89 for the UKF (`scripts/gru_with_maintenance_flag.py`, one seed).
+- The flow beats the GRU that reads the same window: 9 % lower RMSE in all 5 folds, and it also gives a distribution. It stays 14 % behind the UKF, in all 5 folds.
+- The CRPS needs a fair width. The raw 90 % intervals of the UKF cover 98 % of the truth, so they are too wide; those of the flow cover 94 %. On the raw CRPS the flow beats the UKF (0.375 against 0.420, in all 5 folds), but that mostly measures the width. With one spread factor per indicator fitted on validation, the UKF is ahead (0.344 against 0.363, the flow is better in 1 fold of 5). After the rescaling the 90 % intervals cover 82 % (UKF), 86 % (flow) and 87 % (hybrid): the width that minimises the CRPS is narrower than the nominal one, because the errors have heavier tails than a Gaussian.
+- The hybrid is the best model on every column of the table, by a small margin. RMSE 0.84 against 0.87 for the UKF: lower in all 5 folds, but by only 0.006 to 0.050 per fold, and the standard deviation over folds is 0.04. The rescaled CRPS gain is larger, 0.318 against 0.344 (7.6 %, 5 of 5 folds). Reading the filter makes the flow much better (0.84 against 0.99 for the flow alone). The gain comes from the hard indicators below; the hybrid is a little worse than the UKF on a few easy ones (for example CmpFan_flow 0.12 against 0.09, CmpH_eff 0.25 against 0.21, TrbH_flow 0.19 against 0.17).
+- Three indicators carry the error. CmpFan_eff, TrbL_eff and TrbL_flow make up about 89 % of the squared error of the UKF. The paper also finds them weakly observable.
+- Time since the last maintenance. The table is RMSE x1e3, UKF / GRU, on the test sequences of fold 0 (`scripts/error_by_time_since_maintenance.py`). "Rows since" counts from the last maintenance event or from the start of the sequence.
 
 | rows since | scored rows | 3 hard indicators | 7 others |
 |---|---|---|---|
@@ -93,7 +93,7 @@ All models read the 25 standardised sensor channels. Only the UKF also reads the
 
 ## Losing a flight phase
 
-The UKF and a flow trained with phase dropout, on fold 0 with one seed. Each row takes away the 7 sensors of one flight phase at test time. The UKF skips them in its update. The flow was trained with phases removed at random and is told which ones are there. The spread factors are fitted on validation with every sensor present and used in all rows, which is why the CRPS columns are the rescaled ones.
+The UKF and a flow trained with phase dropout, on fold 0 with one seed. Each row takes away the 7 sensors of one flight phase at test time. The UKF skips them in its update. The flow was trained with phases removed at random and is told which ones are there. Spread factors are fitted on validation with every sensor present and used in all rows, which is why the CRPS columns are the rescaled ones.
 
 | lost phase | RMSE x1e3 ukf | RMSE x1e3 flow | CRPS x1e3 rescaled ukf | CRPS x1e3 rescaled flow | 90% cover ukf | 90% cover flow | 90% cover rescaled ukf | 90% cover rescaled flow |
 |---|---|---|---|---|---|---|---|---|
